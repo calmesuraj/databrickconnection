@@ -26,6 +26,8 @@ jobs:
       - name: npm install, build, and test
         run: |
           npm install
+          # Fix permission for Vite before building
+          chmod +x ./node_modules/.bin/vite
           npm run build --if-present
           npm run test --if-present
 
@@ -62,4 +64,5 @@ jobs:
           app-name: 'reactData'
           slot-name: 'Production'
           package: .
+
           
