@@ -26,7 +26,8 @@ jobs:
         run: npm ci --prefix client
 
       - name: Build client
-        run: npm run build --prefix client
+        working-directory: client
+        run: npx --yes vite build
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
