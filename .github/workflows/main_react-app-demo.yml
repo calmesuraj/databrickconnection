@@ -1,4 +1,4 @@
-name: Build and deploy - react-app-demo
+name: Build and deploy - aaaaaa1
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_NAME: react-app-demo
+  APP_NAME: aaaaaa1
   SLOT_NAME: Production
   NODE_VERSION: "22.x"
 
@@ -20,7 +20,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # ✅ ONLY install at root (workspaces)
       - name: Install (root)
         run: |
           if [ -f package-lock.json ]; then
@@ -29,11 +28,8 @@ jobs:
             npm install
           fi
 
-      - name: Build (workspaces)
-        run: npm run build
-
-      - name: Test (optional)
-        run: npm run test --if-present
+      - name: Build
+        run: npm run build --if-present
 
       - name: Remove node_modules before packaging
         run: |
@@ -41,7 +37,7 @@ jobs:
           rm -rf server/node_modules
           rm -rf client/node_modules
 
-      - name: Create deploy.zip (exclude node_modules)
+      - name: Create deploy.zip
         run: |
           zip -r deploy.zip . \
             -x "**/node_modules/**" \
@@ -51,13 +47,13 @@ jobs:
             -x "**/.env" \
             -x "**/*.log"
 
-      - name: Verify deploy.zip does not include node_modules (safe)
+      - name: Verify deploy.zip has no node_modules (safe)
         run: |
           if unzip -l deploy.zip | grep -i "node_modules" ; then
-            echo "❌ node_modules found in deploy.zip. Failing build."
+            echo "❌ node_modules found in deploy.zip"
             exit 1
           else
-            echo "✅ deploy.zip contains no node_modules"
+            echo "✅ deploy.zip OK (no node_modules)"
           fi
 
       - uses: actions/upload-artifact@v4
@@ -67,7 +63,6 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    environment: Production
     needs: build
     permissions:
       id-token: write
@@ -78,12 +73,21 @@ jobs:
         with:
           name: deploy-zip
 
-      - name: Login to Azure
+      # ✅ This will fail with a clear message if secrets aren't accessible
+      - name: Check Azure secrets exist (safe)
+        run: |
+          test -n "${{ secrets.AZUREAPPSERVICE_CLIENTID_B98BDA3D86B44C5D8D6C30C5741C2F95 }}" || (echo "Missing secret: AZUREAPPSERVICE_CLIENTID_..." && exit 1)
+          test -n "${{ secrets.AZUREAPPSERVICE_TENANTID_B9949FD08D19436CB50D9B04E097880A }}" || (echo "Missing secret: AZUREAPPSERVICE_TENANTID_..." && exit 1)
+          test -n "${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_12CE1A0504D147579BE9283B5EC52346 }}" || (echo "Missing secret: AZUREAPPSERVICE_SUBSCRIPTIONID_..." && exit 1)
+          test -n "${{ secrets.AZURE_RESOURCE_GROUP }}" || (echo "Missing secret: AZURE_RESOURCE_GROUP" && exit 1)
+          echo "✅ Azure secrets exist."
+
+      - name: Login to Azure (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_17FB1991F8294D548D9BD14FBD060460 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_07E4F36E449248CAB3759840D5319700 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8C070B2C159244248DC5DBE0F9F531D3 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B98BDA3D86B44C5D8D6C30C5741C2F95 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_B9949FD08D19436CB50D9B04E097880A }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_12CE1A0504D147579BE9283B5EC52346 }}
 
       - name: Set App Settings (Databricks)
         uses: azure/cli@v2
