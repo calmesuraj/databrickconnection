@@ -13,9 +13,7 @@ env:
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
-    # If your secrets are in a GitHub Environment, set it here:
-    # environment: Production
-
+    environment: Production
     permissions:
       contents: read
       id-token: write
@@ -28,8 +26,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # ✅ No lockfile required
-      - name: Install deps (root)
+      - name: Install (root)
         run: npm install
 
       - name: Build
@@ -38,7 +35,6 @@ jobs:
       - name: Test (optional)
         run: npm run test --if-present
 
-      # ✅ Remove node_modules so Kudu won't try to tar it and fail
       - name: Remove node_modules before packaging
         run: |
           rm -rf node_modules
@@ -64,14 +60,16 @@ jobs:
             echo "✅ deploy.zip OK (no node_modules)"
           fi
 
-      # ✅ Fail early if Azure secrets not accessible
-      - name: Check Azure secrets exist (safe)
+      - name: Check required secrets exist (safe)
         run: |
-          test -n "${{ secrets.AZUREAPPSERVICE_CLIENTID_B98BDA3D86B44C5D8D6C30C5741C2F95 }}" || (echo "Missing secret: AZUREAPPSERVICE_CLIENTID_..." && exit 1)
-          test -n "${{ secrets.AZUREAPPSERVICE_TENANTID_B9949FD08D19436CB50D9B04E097880A }}" || (echo "Missing secret: AZUREAPPSERVICE_TENANTID_..." && exit 1)
-          test -n "${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_12CE1A0504D147579BE9283B5EC52346 }}" || (echo "Missing secret: AZUREAPPSERVICE_SUBSCRIPTIONID_..." && exit 1)
+          test -n "${{ secrets.AZUREAPPSERVICE_CLIENTID_B98BDA3D86B44C5D8D6C30C5741C2F95 }}" || (echo "Missing Azure client-id secret" && exit 1)
+          test -n "${{ secrets.AZUREAPPSERVICE_TENANTID_B9949FD08D19436CB50D9B04E097880A }}" || (echo "Missing Azure tenant-id secret" && exit 1)
+          test -n "${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_12CE1A0504D147579BE9283B5EC52346 }}" || (echo "Missing Azure subscription-id secret" && exit 1)
           test -n "${{ secrets.AZURE_RESOURCE_GROUP }}" || (echo "Missing secret: AZURE_RESOURCE_GROUP" && exit 1)
-          echo "✅ Azure secrets exist."
+          test -n "${{ secrets.DATABRICKS_HOST }}" || (echo "Missing secret: DATABRICKS_HOST" && exit 1)
+          test -n "${{ secrets.DATABRICKS_HTTP_PATH }}" || (echo "Missing secret: DATABRICKS_HTTP_PATH" && exit 1)
+          test -n "${{ secrets.DATABRICKS_TOKEN }}" || (echo "Missing secret: DATABRICKS_TOKEN" && exit 1)
+          echo "✅ All required secrets exist."
 
       - name: Login to Azure (OIDC)
         uses: azure/login@v2
