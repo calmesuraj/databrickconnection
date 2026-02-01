@@ -24,32 +24,39 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install and build
+      - name: Install + build
         run: |
           npm ci || npm install
           npm run build --if-present
           npm run test --if-present
 
-      # IMPORTANT: remove node_modules so ZIP Deploy doesn't choke on file count
+      # CRITICAL: remove all node_modules created during build (monorepo safe)
       - name: Remove node_modules before packaging
         run: |
           rm -rf node_modules
           rm -rf server/node_modules
           rm -rf client/node_modules
 
-      # Create a clean zip (exclude git, node_modules, caches, logs)
-      - name: Create deploy.zip
+      # Create a clean zip excluding node_modules and other junk
+      - name: Create deploy.zip (exclude node_modules)
         run: |
           zip -r deploy.zip . \
             -x "**/node_modules/**" \
             -x "**/.git/**" \
             -x "**/.github/**" \
             -x "**/.vscode/**" \
-            -x "**/.DS_Store" \
-            -x "**/*.log" \
-            -x "**/npm-debug.log" \
-            -x "**/yarn-error.log" \
-            -x "**/.env"
+            -x "**/.env" \
+            -x "**/*.log"
+
+      # ✅ PROOF: fail the build if node_modules is inside the zip
+      - name: Verify deploy.zip does not include node_modules (safe)
+        run: |
+          if unzip -l deploy.zip | grep -i "node_modules" ; then
+            echo "❌ node_modules found in deploy.zip. Failing build."
+            exit 1
+          else
+            echo "✅ deploy.zip contains no node_modules"
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -71,6 +78,19 @@ jobs:
         with:
           name: deploy-zip
 
+      - name: Check required secrets exist (safe)
+        run: |
+          test -n "${{ secrets.AZUREAPPSERVICE_CLIENTID_17FB1991F8294D548D9BD14FBD060460 }}" || (echo "Missing Azure client-id secret" && exit 1)
+          test -n "${{ secrets.AZUREAPPSERVICE_TENANTID_07E4F36E449248CAB3759840D5319700 }}" || (echo "Missing Azure tenant-id secret" && exit 1)
+          test -n "${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8C070B2C159244248DC5DBE0F9F531D3 }}" || (echo "Missing Azure subscription-id secret" && exit 1)
+          test -n "${{ secrets.AZURE_RESOURCE_GROUP }}" || (echo "Missing secret: AZURE_RESOURCE_GROUP" && exit 1)
+
+          test -n "${{ secrets.DATABRICKS_HOST }}" || (echo "Missing secret: DATABRICKS_HOST" && exit 1)
+          test -n "${{ secrets.DATABRICKS_HTTP_PATH }}" || (echo "Missing secret: DATABRICKS_HTTP_PATH" && exit 1)
+          test -n "${{ secrets.DATABRICKS_TOKEN }}" || (echo "Missing secret: DATABRICKS_TOKEN" && exit 1)
+
+          echo "✅ All required secrets exist."
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -78,8 +98,7 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_07E4F36E449248CAB3759840D5319700 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8C070B2C159244248DC5DBE0F9F531D3 }}
 
-      # Set runtime environment variables (optional but recommended if your app needs them)
-      - name: Set App Settings (Databricks)
+      - name: Set Azure App Settings (Databricks) - Production
         uses: azure/cli@v2
         with:
           inlineScript: |
@@ -93,7 +112,7 @@ jobs:
                 DATABRICKS_TOKEN='${{ secrets.DATABRICKS_TOKEN }}' \
                 NODE_ENV='production'
 
-      - name: Deploy to Azure Web App (ZIP)
+      - name: Deploy ZIP to Azure Web App (Production)
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.APP_NAME }}
@@ -104,6 +123,7 @@ jobs:
         uses: azure/cli@v2
         with:
           inlineScript: |
+            set -e
             az webapp restart \
               --name "${{ env.APP_NAME }}" \
               --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}"
