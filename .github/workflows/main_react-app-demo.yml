@@ -30,14 +30,13 @@ jobs:
           npm run build --if-present
           npm run test --if-present
 
-      # CRITICAL: remove all node_modules created during build (monorepo safe)
+      # IMPORTANT: remove node_modules so ZIP Deploy doesn't choke
       - name: Remove node_modules before packaging
         run: |
           rm -rf node_modules
           rm -rf server/node_modules
           rm -rf client/node_modules
 
-      # Create a clean zip excluding node_modules and other junk
       - name: Create deploy.zip (exclude node_modules)
         run: |
           zip -r deploy.zip . \
@@ -48,7 +47,6 @@ jobs:
             -x "**/.env" \
             -x "**/*.log"
 
-      # ✅ PROOF: fail the build if node_modules is inside the zip
       - name: Verify deploy.zip does not include node_modules (safe)
         run: |
           if unzip -l deploy.zip | grep -i "node_modules" ; then
@@ -67,6 +65,8 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
+    # If your secrets are stored under GitHub "Environments", this is REQUIRED:
+    environment: Production
     needs: build
     permissions:
       id-token: write
@@ -78,11 +78,13 @@ jobs:
         with:
           name: deploy-zip
 
+      # ✅ Fail early if secrets are missing (safe)
       - name: Check required secrets exist (safe)
         run: |
-          test -n "${{ secrets.AZUREAPPSERVICE_CLIENTID_17FB1991F8294D548D9BD14FBD060460 }}" || (echo "Missing Azure client-id secret" && exit 1)
-          test -n "${{ secrets.AZUREAPPSERVICE_TENANTID_07E4F36E449248CAB3759840D5319700 }}" || (echo "Missing Azure tenant-id secret" && exit 1)
-          test -n "${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8C070B2C159244248DC5DBE0F9F531D3 }}" || (echo "Missing Azure subscription-id secret" && exit 1)
+          test -n "${{ secrets.AZUREAPPSERVICE_CLIENTID_17FB1991F8294D548D9BD14FBD060460 }}" || (echo "Missing secret: AZUREAPPSERVICE_CLIENTID_..." && exit 1)
+          test -n "${{ secrets.AZUREAPPSERVICE_TENANTID_07E4F36E449248CAB3759840D5319700 }}" || (echo "Missing secret: AZUREAPPSERVICE_TENANTID_..." && exit 1)
+          test -n "${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8C070B2C159244248DC5DBE0F9F531D3 }}" || (echo "Missing secret: AZUREAPPSERVICE_SUBSCRIPTIONID_..." && exit 1)
+
           test -n "${{ secrets.AZURE_RESOURCE_GROUP }}" || (echo "Missing secret: AZURE_RESOURCE_GROUP" && exit 1)
 
           test -n "${{ secrets.DATABRICKS_HOST }}" || (echo "Missing secret: DATABRICKS_HOST" && exit 1)
@@ -98,6 +100,18 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_07E4F36E449248CAB3759840D5319700 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8C070B2C159244248DC5DBE0F9F531D3 }}
 
+      - name: Debug - confirm target webapp exists (safe)
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            az account show --query "{name:name, id:id, tenantId:tenantId}" -o json
+            az webapp show \
+              --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+              --name "${{ env.APP_NAME }}" \
+              --query "{name:name, state:state, defaultHostName:defaultHostName, location:location}" \
+              -o json
+
       - name: Set Azure App Settings (Databricks) - Production
         uses: azure/cli@v2
         with:
@@ -111,6 +125,17 @@ jobs:
                 DATABRICKS_HTTP_PATH='${{ secrets.DATABRICKS_HTTP_PATH }}' \
                 DATABRICKS_TOKEN='${{ secrets.DATABRICKS_TOKEN }}' \
                 NODE_ENV='production'
+
+      - name: Verify Azure App Settings keys exist (safe)
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            az webapp config appsettings list \
+              --name "${{ env.APP_NAME }}" \
+              --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+              --query "[?name=='DATABRICKS_HOST' || name=='DATABRICKS_HTTP_PATH' || name=='DATABRICKS_TOKEN' || name=='NODE_ENV'].name" \
+              -o table
 
       - name: Deploy ZIP to Azure Web App (Production)
         uses: azure/webapps-deploy@v3
