@@ -16,29 +16,25 @@ console.log("[BOOT] ENV:", {
   PORT: process.env.PORT || ENV.PORT,
   HOST: !!ENV.DATABRICKS_HOSTNAME,
   PATH: !!ENV.DATABRICKS_HTTP_PATH,
-  TOKEN: !!ENV.DATABRICKS_TOKEN,
+  TOKEN: !!ENV.DATABRICKS_TOKEN
 });
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Health check
+// ✅ Health endpoint
 app.get("/api/health", (_req: Request, res: Response) => res.json({ ok: true }));
 
-// Example route
 app.get("/api/employees", async (_req: Request, res: Response) => {
   try {
-    const rows = await runQuery(
-      "SELECT * FROM workspace.demo_db.employees LIMIT 100"
-    );
+    const rows = await runQuery("SELECT * FROM workspace.demo_db.employees LIMIT 100");
     res.json({ rows });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Internal Server Error" });
   }
 });
 
-// Query endpoint
 app.post("/api/query", async (req: Request, res: Response) => {
   try {
     const { sql } = (req.body || {}) as { sql?: string };
@@ -53,11 +49,7 @@ app.post("/api/query", async (req: Request, res: Response) => {
   }
 });
 
-/**
- * ✅ AZURE FIX
- * Azure App Service (Linux) routes traffic to process.env.PORT (usually 8080).
- * So we MUST listen on that port.
- */
+// ✅ AZURE: must listen on process.env.PORT (Azure sets it to 8080)
 const PORT = Number(process.env.PORT || ENV.PORT || 8080);
 
 const server = app.listen(PORT, "0.0.0.0", () => {
