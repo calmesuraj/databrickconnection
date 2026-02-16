@@ -34,22 +34,12 @@ jobs:
           mkdir -p server/public
           cp -R client/dist/* server/public/
 
-      - name: Remove any old node_modules tarballs
-        run: |
-          rm -f server/node_modules.tar.gz || true
-          rm -f server/node_modules.zip || true
-
-      - name: Create deployment zip (server only)
-        run: |
-          cd server
-          zip -r ../node-app.zip . -x "**/node_modules/**"
-          cd ..
-
+      # Upload the SERVER FOLDER (source + dist + public), not a zip
       - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:
-          name: node-app
-          path: node-app.zip
+          name: server-app
+          path: server
           if-no-files-found: error
 
   deploy:
@@ -63,7 +53,8 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: node-app
+          name: server-app
+          path: server
 
       - name: Login to Azure (OIDC)
         uses: azure/login@v2
@@ -72,13 +63,14 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ✅ Set Databricks env vars in Azure App Service from GitHub Secrets
+      # ✅ IMPORTANT: force Azure to run npm install/build during deployment
       - name: Set Azure App Service environment variables
         run: |
           az webapp config appsettings set \
             --name reactTable \
             --resource-group reactweb \
             --settings \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=true \
               DATABRICKS_HOST="${{ secrets.DATABRICKS_HOST }}" \
               DATABRICKS_HTTP_PATH="${{ secrets.DATABRICKS_HTTP_PATH }}" \
               DATABRICKS_TOKEN="${{ secrets.DATABRICKS_TOKEN }}"
@@ -88,4 +80,4 @@ jobs:
         with:
           app-name: "reactTable"
           slot-name: "Production"
-          package: node-app.zip
+          package: server
