@@ -34,7 +34,6 @@ jobs:
           mkdir -p server/public
           cp -R client/dist/* server/public/
 
-      # Upload the SERVER FOLDER (source + dist + public), not a zip
       - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:
@@ -63,7 +62,6 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ✅ IMPORTANT: force Azure to run npm install/build during deployment
       - name: Set Azure App Service environment variables
         run: |
           az webapp config appsettings set \
