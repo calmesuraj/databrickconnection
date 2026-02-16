@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install dependencies
+      - name: Install dependencies (monorepo)
         run: npm install
 
       - name: Build server
@@ -34,12 +34,24 @@ jobs:
           mkdir -p server/public
           cp -R client/dist/* server/public/
 
-      # Upload the SERVER FOLDER (source + dist + public), not a zip
+      # IMPORTANT: ensure no old tarballs are inside server
+      - name: Remove any old node_modules tarballs
+        run: |
+          rm -f server/node_modules.tar.gz || true
+          rm -f server/node_modules.zip || true
+
+      # Create zip from inside server folder
+      - name: Create deployment zip (server)
+        run: |
+          cd server
+          zip -r ../server.zip . -x "**/node_modules/**"
+          cd ..
+
       - name: Upload artifact for deployment
         uses: actions/upload-artifact@v4
         with:
-          name: server-app
-          path: server
+          name: server-zip
+          path: server.zip
           if-no-files-found: error
 
   deploy:
@@ -53,8 +65,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: server-app
-          path: server
+          name: server-zip
 
       - name: Login to Azure (OIDC)
         uses: azure/login@v2
@@ -63,8 +74,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ✅ IMPORTANT: force Azure to run npm install/build during deployment
-      - name: Set Azure App Service environment variables
+      - name: Configure App Settings + Startup Command
         run: |
           az webapp config appsettings set \
             --name reactTable \
@@ -75,9 +85,15 @@ jobs:
               DATABRICKS_HTTP_PATH="${{ secrets.DATABRICKS_HTTP_PATH }}" \
               DATABRICKS_TOKEN="${{ secrets.DATABRICKS_TOKEN }}"
 
+          # Ensures Azure starts the server from your app root
+          az webapp config set \
+            --name reactTable \
+            --resource-group reactweb \
+            --startup-file "npm start"
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: "reactTable"
           slot-name: "Production"
-          package: server
+          package: server.zip
