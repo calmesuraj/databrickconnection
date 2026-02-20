@@ -1,4 +1,4 @@
-name: Build & Deploy (Single Container) to Azure Web App
+name: Build & Deploy  to Azure Web App
 
 on:
   push:
