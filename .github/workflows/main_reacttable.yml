@@ -22,8 +22,9 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Login to ACR
-        run: az acr login -n ${{ secrets.ACR_NAME }}
+      - name: Verify ACR exists
+        run: |
+          az acr show -n ${{ secrets.ACR_NAME }} -g ${{ secrets.RESOURCE_GROUP }} --query "loginServer" -o tsv
 
       - name: Build image in ACR
         run: |
